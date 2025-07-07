@@ -7,12 +7,21 @@ from dash import Dash, dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
 from oauth2client.service_account import ServiceAccountCredentials
 
+# Decode base64 and save credentials.json at runtime
+if not os.path.exists("credentials.json"):
+    encoded = os.environ.get("GOOGLE_CREDENTIALS_B64")
+    if encoded:
+        with open("credentials.json", "wb") as f:
+            f.write(base64.b64decode(encoded))
+    else:
+        raise Exception("GOOGLE_CREDENTIALS_B64 environment variable not set.")
+
 # ========== Google Sheets Setup ==========
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_name("sheets-381015-161fa045736c.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 sheet_id = "1bRhI66zl254CzLNFSRO6IgS0ngElRJEvnXk_wQmUeYo"
 spreadsheet = client.open_by_key(sheet_id)
