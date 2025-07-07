@@ -1,0 +1,2 @@
+touch .gitignore
+echo "sheets-381015-161fa045736c.json" >> .gitignore

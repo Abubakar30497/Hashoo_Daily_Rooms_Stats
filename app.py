@@ -12,7 +12,7 @@ scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_name("sheets-381015-8653383555cf.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("sheets-381015-161fa045736c.json", scope)
 client = gspread.authorize(creds)
 sheet_id = "1bRhI66zl254CzLNFSRO6IgS0ngElRJEvnXk_wQmUeYo"
 spreadsheet = client.open_by_key(sheet_id)
