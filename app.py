@@ -184,6 +184,7 @@ def update_tabs(n):
 
     return dcc.Tabs(tabs)
 
+
 # ========== Run App ==========
 if __name__ == '__main__':
     app.run_server(debug=True)
