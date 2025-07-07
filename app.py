@@ -194,6 +194,8 @@ def update_tabs(n):
 
     return dcc.Tabs(tabs)
 
+# Required for Render Deployment
+server = app.server
 
 # ========== Run App ==========
 if __name__ == '__main__':
