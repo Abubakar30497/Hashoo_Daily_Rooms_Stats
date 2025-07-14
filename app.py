@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 import pandas as pd
 import gspread
 from datetime import datetime
@@ -7,17 +8,27 @@ from dash import Dash, dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
 from oauth2client.service_account import ServiceAccountCredentials
 
+# Decode base64 and save credentials.json at runtime
+if not os.path.exists("credentials.json"):
+    encoded = os.environ.get("GOOGLE_CREDENTIALS_B64")
+    if encoded:
+        with open("credentials.json", "wb") as f:
+            f.write(base64.b64decode(encoded))
+    else:
+        raise Exception("GOOGLE_CREDENTIALS_B64 environment variable not set.")
+
 # ========== Google Sheets Setup ==========
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_name("sheets-381015-db3e2c9a4767.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 sheet_id = "1bRhI66zl254CzLNFSRO6IgS0ngElRJEvnXk_wQmUeYo"
 spreadsheet = client.open_by_key(sheet_id)
 ws_actual = spreadsheet.worksheet("Actual_25-26")
 ws_budget = spreadsheet.worksheet("Budget_25-26")
+
 
 # ========== File Processor ==========
 def process_file(contents, filename):
@@ -316,6 +327,7 @@ def update_tabs(n):
         import traceback
         traceback.print_exc()
         return html.Div(f"❌ Error: {str(e)}")
+
 
 # ========== Run App ==========
 if __name__ == '__main__':
