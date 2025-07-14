@@ -328,6 +328,8 @@ def update_tabs(n):
         traceback.print_exc()
         return html.Div(f"❌ Error: {str(e)}")
 
+# Required for Render Deployment
+server = app.server
 
 # ========== Run App ==========
 if __name__ == '__main__':
