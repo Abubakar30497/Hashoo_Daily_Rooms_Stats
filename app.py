@@ -120,10 +120,16 @@ def make_table(data):
     }
 
     data = pd.concat([data, pd.DataFrame([total_row])], ignore_index=True)
-
+    # Format only revenue columns
+    formatted_data = data.copy()
+    for col in ['Actual Revenue', 'Budget Revenue', 'Actual Rate', 'Budget Rate']:
+        if col in formatted_data.columns:
+            formatted_data[col] = formatted_data[col].apply(
+                lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).replace(',', '').replace('.', '').isdigit() else x
+            )
     return dash_table.DataTable(
         columns=[{"name": col, "id": col} for col in data.columns],
-        data=data.to_dict('records'),
+        data=formatted_data.to_dict('records'),
         style_table={'overflowY': 'auto', 'height': '600px'},
         style_cell={'textAlign': 'center'},
         style_header={'fontWeight': 'bold'},
@@ -131,7 +137,8 @@ def make_table(data):
             {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#e6f2ff'},
             {'if': {'filter_query': '{Day} = "Total"'}, 'fontWeight': 'bold', 'backgroundColor': '#f1f1f1'}
         ]
-    )    
+    )  
+
 # ========== App Layout ==========
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = dbc.Container([
