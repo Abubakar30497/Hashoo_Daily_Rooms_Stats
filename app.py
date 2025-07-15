@@ -106,36 +106,75 @@ def update_google_sheet(processed_df, worksheet):
     return f"✅ {len(processed_df)} rows updated for {processed_df['Property'].nunique()} property(ies)."
 # ========== Create Colored Table ==========
 def make_table(data):
-    # Compute total row with safe calculations
+    def safe_sum(series):
+        return series.sum(skipna=True) if series.notna().any() else 0
+
+    def safe_mean(series):
+        return round(series.mean(skipna=True), 2) if series.notna().any() else 0
+
+    # Subtotal: History
+    history_data = data[data['Label'] == 'History']
+    history_row = {
+        'Day': 'Subtotal (History)',
+        'Month': '',
+        'Actual Occ': safe_sum(history_data['Actual Occ']),
+        'Budget Occ': safe_sum(history_data['Budget Occ']),
+        'Actual Rate': safe_mean(history_data['Actual Rate']),
+        'Budget Rate': safe_mean(history_data['Budget Rate']),
+        'Actual Revenue': safe_sum(history_data['Actual Revenue']),
+        'Budget Revenue': safe_sum(history_data['Budget Revenue']),
+        'Label': 'History'
+    }
+
+    # Subtotal: Forecast
+    forecast_data = data[data['Label'] == 'Forecast']
+    forecast_row = {
+        'Day': 'Subtotal (Forecast)',
+        'Month': '',
+        'Actual Occ': safe_sum(forecast_data['Actual Occ']),
+        'Budget Occ': safe_sum(forecast_data['Budget Occ']),
+        'Actual Rate': safe_mean(forecast_data['Actual Rate']),
+        'Budget Rate': safe_mean(forecast_data['Budget Rate']),
+        'Actual Revenue': safe_sum(forecast_data['Actual Revenue']),
+        'Budget Revenue': safe_sum(forecast_data['Budget Revenue']),
+        'Label': 'Forecast'
+    }
+
+    # Grand Total
     total_row = {
         'Day': 'Total',
         'Month': '',
-        'Actual Occ': data['Actual Occ'].sum(skipna=True) if 'Actual Occ' in data.columns else 0,
-        'Budget Occ': data['Budget Occ'].sum(skipna=True) if 'Budget Occ' in data.columns else 0,
-        'Actual Rate': round(data['Actual Rate'].mean(skipna=True), 2) if 'Actual Rate' in data.columns and data['Actual Rate'].notna().any() else 0,
-        'Budget Rate': round(data['Budget Rate'].mean(skipna=True), 2) if 'Budget Rate' in data.columns and data['Budget Rate'].notna().any() else 0,
-        'Actual Revenue': data['Actual Revenue'].sum(skipna=True) if 'Actual Revenue' in data.columns else 0,
-        'Budget Revenue': data['Budget Revenue'].sum(skipna=True) if 'Budget Revenue' in data.columns else 0,
+        'Actual Occ': safe_sum(data['Actual Occ']),
+        'Budget Occ': safe_sum(data['Budget Occ']),
+        'Actual Rate': safe_mean(data['Actual Rate']),
+        'Budget Rate': safe_mean(data['Budget Rate']),
+        'Actual Revenue': safe_sum(data['Actual Revenue']),
+        'Budget Revenue': safe_sum(data['Budget Revenue']),
         'Label': ''
     }
 
-    data = pd.concat([data, pd.DataFrame([total_row])], ignore_index=True)
-    # Format only revenue columns
+    # Append subtotals and total
+    data = pd.concat([data, pd.DataFrame([history_row, forecast_row, total_row])], ignore_index=True)
+
+    # Format revenue and rate columns
     formatted_data = data.copy()
     for col in ['Actual Revenue', 'Budget Revenue', 'Actual Rate', 'Budget Rate']:
         if col in formatted_data.columns:
             formatted_data[col] = formatted_data[col].apply(
-                lambda x: f"{int(float(x)):,}" if pd.notnull(x) and str(x).replace(',', '').replace('.', '').isdigit() else x
+                lambda x: f"{float(x):,.0f}" if pd.notnull(x) and isinstance(x, (int, float)) else x
             )
+
     return dash_table.DataTable(
-        columns=[{"name": col, "id": col} for col in data.columns],
+        columns=[{"name": col, "id": col} for col in formatted_data.columns],
         data=formatted_data.to_dict('records'),
         style_table={'overflowY': 'auto', 'height': '600px'},
         style_cell={'textAlign': 'center'},
         style_header={'fontWeight': 'bold'},
         style_data_conditional=[
             {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#e6f2ff'},
-            {'if': {'filter_query': '{Day} = "Total"'}, 'fontWeight': 'bold', 'backgroundColor': '#f1f1f1'}
+            {'if': {'filter_query': '{Label} = "Forecast"'}, 'backgroundColor': '#fff3cd'},
+            {'if': {'filter_query': '{Day} contains "Subtotal"'}, 'fontWeight': 'bold', 'backgroundColor': '#e8e8e8'},
+            {'if': {'filter_query': '{Day} = "Total"'}, 'fontWeight': 'bold', 'backgroundColor': '#d9edf7'}
         ]
     )  
 
