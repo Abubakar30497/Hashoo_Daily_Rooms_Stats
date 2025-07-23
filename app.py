@@ -7,6 +7,7 @@ from datetime import datetime
 from dash import Dash, dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
 from oauth2client.service_account import ServiceAccountCredentials
+import calendar
 
 # Decode base64 and save credentials.json at runtime
 if not os.path.exists("credentials.json"):
@@ -28,6 +29,10 @@ sheet_id = "1bRhI66zl254CzLNFSRO6IgS0ngElRJEvnXk_wQmUeYo"
 spreadsheet = client.open_by_key(sheet_id)
 ws_actual = spreadsheet.worksheet("Actual_25-26")
 ws_budget = spreadsheet.worksheet("Budget_25-26")
+
+# ========== Gobal Data Setup ==========
+actual_data_global = pd.DataFrame()
+budget_data_global = pd.DataFrame()
 
 
 # ========== File Processor ==========
@@ -54,10 +59,14 @@ def process_file(contents, filename):
     forecast_start_index = df[df['Date'].astype(str).str.contains("Forecast", case=False)].index
     forecast_start_index = forecast_start_index[0] if len(forecast_start_index) > 0 else None
 
-    df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index] \
-        if forecast_start_index is not None else 'History'
-
-    df = df[df['Date'].astype(str).str.contains("JUL-2025")]
+    #df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index] \
+    #    if forecast_start_index is not None else 'History'
+    if forecast_start_index is not None:
+        df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index]
+    else:
+        df['Label'] = ['History'] * len(df)
+    
+    #df = df[df['Date'].astype(str).str.contains("JUL-2025")]
     df.reset_index(drop=True, inplace=True)
 
     hotel_name = filename.split()[1].split('.')[0]
@@ -188,6 +197,16 @@ app.layout = dbc.Container([
         multiple=True
     ),
     html.Div(id='upload-status', className="my-2"),
+    html.Div([
+        dcc.Dropdown(
+            id='month-dropdown',
+            options=[],  # Will be set via callback
+            value=None,  # Default value to be set
+            placeholder="Select Month",
+            style={'width': '200px', 'margin-bottom': '10px'}
+        ),
+        html.Div(id='table-container')
+    ]),
     dcc.Interval(id='interval-component', interval=5*60*1000, n_intervals=0),
     html.Div(id='tabs-container')
 ])
@@ -217,12 +236,49 @@ def handle_upload(contents, filenames):
         return html.Div(msg)
     return html.Div("No files uploaded.")
 
+# ========== Month Dropdown Callback ==========
+@app.callback(
+    Output('month-dropdown', 'options'),
+    Output('month-dropdown', 'value'),
+    Input('interval-component', 'n_intervals')
+)
+def populate_month_dropdown(_):
+    actual_data = ws_actual.get_all_values()
+    #budget_data = ws_budget.get_all_values()
+
+    if not actual_data:
+        return html.Div("❌ Failed to fetch data from Google Sheets.")
+
+    actual_df = pd.DataFrame(actual_data[1:], columns=actual_data[0])
+    #budget_df = pd.DataFrame(budget_data[1:], columns=budget_data[0])
+
+    #update global actual data
+    global actual_data_global
+    actual_data_global = actual_df.copy()
+    
+    if actual_data_global.empty:
+        print('empty')
+              
+    
+    months_sorted = sorted(
+        actual_data_global['Month-Year'].dropna().unique(),
+        key=lambda x: pd.to_datetime(x, format='%b-%Y')
+    )
+    
+    current_month = datetime.now().strftime('%B')
+    default = current_month if current_month in months_sorted else months_sorted[0]
+
+    options = [{'label': m, 'value': m} for m in months_sorted]
+    return options, default
+
+
 # ========== Auto Refresh Dashboard (Debug Version) ==========
 @app.callback(
     Output('tabs-container', 'children'),
+    Input('month-dropdown', 'value'),
     Input('interval-component', 'n_intervals')
 )
-def update_tabs(n):
+def update_tabs(selected_month,n):
     try:
         actual_data = ws_actual.get_all_values()
         budget_data = ws_budget.get_all_values()
@@ -232,6 +288,9 @@ def update_tabs(n):
 
         actual_df = pd.DataFrame(actual_data[1:], columns=actual_data[0])
         budget_df = pd.DataFrame(budget_data[1:], columns=budget_data[0])
+
+        # Filter selected month in data
+        actual_df = actual_df[actual_df['Month-Year']==selected_month]
         
         # DEBUG: Print what we got
         print("=== DEBUG INFO ===")
