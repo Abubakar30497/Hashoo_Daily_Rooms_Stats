@@ -208,7 +208,7 @@ def make_table(data):
 	fixed_rows={'headers': True},
         style_table={'overflowY': 'auto','overflowX': 'auto'},
         style_cell={'textAlign': 'center'},
-        style_header={'fontWeight': 'bold'},
+        style_header={'fontWeight': 'bold','whiteSpace': 'normal'},
         style_data_conditional=[
             # Normal rows
             {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#BAF9B7'},
