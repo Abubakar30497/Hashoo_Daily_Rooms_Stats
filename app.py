@@ -192,9 +192,21 @@ def make_table(data):
             )
 
     return dash_table.DataTable(
-        columns=[{"name": col, "id": col} for col in formatted_data.columns],
+        #columns=[{"name": col, "id": col} for col in formatted_data.columns],
+        columns=[
+            {"name": "Day", "id": "Day"},
+            {"name": "Month", "id": "Month"},
+            {"name": "Actual RN's", "id": "Actual Occ"},
+            {"name": "Budget RN's", "id": "Budget Occ"},
+            {"name": "Actual ADR", "id": "Actual Rate"},
+            {"name": "Budget ADR", "id": "Budget Rate"},
+            {"name": "Actual Revenue", "id": "Actual Revenue"},
+            {"name": "Budget Revenue", "id": "Budget Revenue"},
+            {"name": "Label", "id": "Label"},
+        ],
         data=formatted_data.to_dict('records'),
-        style_table={'overflowY': 'auto', 'height': '600px'},
+	fixed_rows={'headers': True},
+        style_table={'overflowY': 'auto','overflowX': 'auto'},
         style_cell={'textAlign': 'center'},
         style_header={'fontWeight': 'bold'},
         style_data_conditional=[
