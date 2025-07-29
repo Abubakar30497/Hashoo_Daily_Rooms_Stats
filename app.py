@@ -130,6 +130,7 @@ def update_google_sheet(processed_df, worksheet):
     print('==updated_df==')
     print(updated_df)
     return f"✅ {len(processed_df)} rows updated for {processed_df['Property'].nunique()} property(ies)."
+
 # ========== Create Colored Table ==========
 def make_table(data):
     def safe_sum(series):
