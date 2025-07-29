@@ -55,7 +55,8 @@ def process_file(contents, filename):
     for col in ['Avg Rate', 'Revenue']:
         if col not in df.columns:
             df[col] = None  # Fill with NaNs if missing
-
+    
+    # Determine history/forecast
     forecast_start_index = df[df['Date'].astype(str).str.contains("Forecast", case=False)].index
     forecast_start_index = forecast_start_index[0] if len(forecast_start_index) > 0 else None
 
@@ -71,7 +72,12 @@ def process_file(contents, filename):
 
     hotel_name = filename.split()[1].split('.')[0]
     df['Property'] = hotel_name
-    df['Date'] = pd.to_datetime(df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0], format='%d-%b-%Y')
+    # Only if you *must* extract from strings (e.g., due to mixed content)
+    df['Date'] = df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0]
+    df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y', errors='coerce')
+    df = df[df['Date'].notna()]
+
+    #df['Date'] = pd.to_datetime(df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0], format='%d-%b-%Y')
     df['Month-Year'] = df['Date'].dt.strftime('%b-%Y')
 
     return df[['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']]
@@ -98,7 +104,9 @@ def update_google_sheet(processed_df, worksheet):
     processed_df['Date'] = pd.to_datetime(processed_df['Date'])
     existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
     processed_df['Month-Year'] = processed_df['Month-Year'].astype(str)
+    existing_df = existing_df[existing_df['Month-Year'].notna()]
     existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
+    #existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
 
     # Remove overlapping records
     for (prop, month) in processed_df[['Property', 'Month-Year']].drop_duplicates().values:
@@ -108,10 +116,19 @@ def update_google_sheet(processed_df, worksheet):
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
 
+    print("Processed data sample:\n", processed_df.head())
+    print("Existing sheet sample:\n", existing_df.head())
+    print("Merged data sample:\n", updated_df.head())
+    print(updated_df[['Property', 'Date', 'Total Occ', 'Month-Year']].isna().sum())
+
     # Write back to Google Sheet
     worksheet.clear()
     worksheet.update([updated_df.columns.tolist()] + updated_df.astype(str).values.tolist())
-
+    print('==debug==')
+    print('==processed_df==')
+    print(processed_df)
+    print('==updated_df==')
+    print(updated_df)
     return f"✅ {len(processed_df)} rows updated for {processed_df['Property'].nunique()} property(ies)."
 # ========== Create Colored Table ==========
 def make_table(data):
@@ -180,13 +197,36 @@ def make_table(data):
         style_cell={'textAlign': 'center'},
         style_header={'fontWeight': 'bold'},
         style_data_conditional=[
-            {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#e6f2ff'},
-            {'if': {'filter_query': '{Label} = "Forecast"'}, 'backgroundColor': '#fff3cd'},
-            {'if': {'filter_query': '{Day} contains "Subtotal"'}, 'fontWeight': 'bold', 'backgroundColor': '#e8e8e8'},
-            {'if': {'filter_query': '{Day} = "Total"'}, 'fontWeight': 'bold', 'backgroundColor': '#d9edf7'}
+            # Normal rows
+            {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#BAF9B7'},
+            {'if': {'filter_query': '{Label} = "Forecast"'}, 'backgroundColor': '#F79E92'},
+            
+            # Subtotals
+            {
+                'if': {
+                    'filter_query': '{Day} contains "Subtotal" && {Label} = "History"'
+                },
+                'backgroundColor': '#85FA92',
+                'fontWeight': 'bold'
+            },
+            {
+                'if': {
+                    'filter_query': '{Day} contains "Subtotal" && {Label} = "Forecast"'
+                },
+                'backgroundColor': '#FA8576',
+                'fontWeight': 'bold'
+            },
+            
+            # Final total row
+            {
+                'if': {
+                    'filter_query': '{Day} = "Total"'
+                },
+                'backgroundColor': '#92C1F7',
+                'fontWeight': 'bold'
+            }
         ]
-    )  
-
+    )
 # ========== App Layout ==========
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = dbc.Container([
