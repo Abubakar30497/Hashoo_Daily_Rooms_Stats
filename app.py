@@ -82,9 +82,10 @@ def process_file(contents, filename):
 
     return df[['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']]
 
+
 # ========== Update Google Sheet ==========
 def update_google_sheet(processed_df, worksheet):
-    EXPECTED_COLUMNS = ['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']
+    EXPECTED_COLUMNS = ['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year', 'Pickup Occ', 'Pickup Revenue']
     
     # Ensure all expected columns are present
     for col in EXPECTED_COLUMNS:
@@ -94,32 +95,51 @@ def update_google_sheet(processed_df, worksheet):
     # Reorder columns
     processed_df = processed_df[EXPECTED_COLUMNS]
 
+    # --- Convert Dates & Month-Year ---
+    processed_df['Date'] = pd.to_datetime(processed_df['Date'], errors='coerce')
+    processed_df['Month-Year'] = processed_df['Month-Year'].astype(str)
+    
     # Get existing data from sheet
     existing_data = worksheet.get_all_values()
-    existing_df = pd.DataFrame(existing_data[1:], columns=existing_data[0]) if existing_data else pd.DataFrame()
-    if existing_df.empty:
+    if existing_data:
+        existing_df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
+    else:
         existing_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
 
-    # Ensure types are consistent for comparison and merging
-    processed_df['Date'] = pd.to_datetime(processed_df['Date'])
-    existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
-    processed_df['Month-Year'] = processed_df['Month-Year'].astype(str)
-    existing_df = existing_df[existing_df['Month-Year'].notna()]
-    existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
-    #existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
+    # Force same dtypes
+    if not existing_df.empty:
+        existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
+        existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
+    
+    # --- Calculate Pickup (diff from last value in sheet) ---
+    compare_df = processed_df.merge(
+        existing_df[['Property', 'Date', 'Total Occ', 'Revenue']],
+        on=['Property', 'Date'],
+        how='left',
+        suffixes=('', '_prev')
+    )
 
-    # Remove overlapping records
-    for (prop, month) in processed_df[['Property', 'Month-Year']].drop_duplicates().values:
-        existing_df = existing_df[~((existing_df["Property"] == prop) & (existing_df["Month-Year"] == month))]
+    compare_df['Pickup Occ'] = (
+        pd.to_numeric(compare_df['Total Occ'], errors='coerce') -
+        pd.to_numeric(compare_df['Total Occ_prev'], errors='coerce')
+    ).fillna(0)
 
-    # Append and sort
+    compare_df['Pickup Revenue'] = (
+        pd.to_numeric(compare_df['Revenue'], errors='coerce') -
+        pd.to_numeric(compare_df['Revenue_prev'], errors='coerce')
+    ).fillna(0)
+
+    
+    compare_df = compare_df.drop(columns=['Total Occ_prev', 'Revenue_prev'])
+    processed_df = compare_df[EXPECTED_COLUMNS]
+
+    # --- Remove overlapping (replace old rows for same Property+Date) ---
+    for (prop, dt) in processed_df[['Property', 'Date']].drop_duplicates().values:
+        existing_df = existing_df[~((existing_df["Property"] == prop) & (existing_df["Date"] == dt))]
+
+    # --- Append + Sort ---
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
-
-    print("Processed data sample:\n", processed_df.head())
-    print("Existing sheet sample:\n", existing_df.head())
-    print("Merged data sample:\n", updated_df.head())
-    print(updated_df[['Property', 'Date', 'Total Occ', 'Month-Year']].isna().sum())
 
     # Write back to Google Sheet
     worksheet.clear()
@@ -146,10 +166,12 @@ def make_table(data):
         'Month': '',
         'Actual Occ': safe_sum(history_data['Actual Occ']),
         'Budget Occ': safe_sum(history_data['Budget Occ']),
+        'Pickup Occ': safe_sum(history_data['Pickup Occ']),
         'Actual Rate': safe_mean(history_data['Actual Rate']),
         'Budget Rate': safe_mean(history_data['Budget Rate']),
         'Actual Revenue': safe_sum(history_data['Actual Revenue']),
         'Budget Revenue': safe_sum(history_data['Budget Revenue']),
+        'Pickup Revenue': safe_sum(history_data['Pickup Revenue']),
         'Label': 'History'
     }
 
@@ -160,10 +182,12 @@ def make_table(data):
         'Month': '',
         'Actual Occ': safe_sum(forecast_data['Actual Occ']),
         'Budget Occ': safe_sum(forecast_data['Budget Occ']),
+        'Pickup Occ': safe_sum(forecast_data['Pickup Occ']),
         'Actual Rate': safe_mean(forecast_data['Actual Rate']),
         'Budget Rate': safe_mean(forecast_data['Budget Rate']),
         'Actual Revenue': safe_sum(forecast_data['Actual Revenue']),
         'Budget Revenue': safe_sum(forecast_data['Budget Revenue']),
+        'Pickup Revenue': safe_sum(forecast_data['Pickup Revenue']),
         'Label': 'Forecast'
     }
 
@@ -173,73 +197,65 @@ def make_table(data):
         'Month': '',
         'Actual Occ': safe_sum(data['Actual Occ']),
         'Budget Occ': safe_sum(data['Budget Occ']),
+        'Pickup Occ': safe_sum(data['Pickup Occ']),
         'Actual Rate': safe_mean(data['Actual Rate']),
         'Budget Rate': safe_mean(data['Budget Rate']),
         'Actual Revenue': safe_sum(data['Actual Revenue']),
         'Budget Revenue': safe_sum(data['Budget Revenue']),
+        'Pickup Revenue': safe_sum(data['Pickup Revenue']),
         'Label': ''
     }
 
     # Append subtotals and total
     data = pd.concat([data, pd.DataFrame([history_row, forecast_row, total_row])], ignore_index=True)
 
-    # Format revenue and rate columns
+    # Format revenue, pickup and rate columns
     formatted_data = data.copy()
-    for col in ['Actual Revenue', 'Budget Revenue', 'Actual Rate', 'Budget Rate']:
+    for col in ['Actual Revenue', 'Budget Revenue', 'Pickup Revenue', 'Actual Rate', 'Budget Rate']:
         if col in formatted_data.columns:
             formatted_data[col] = formatted_data[col].apply(
                 lambda x: f"{float(x):,.0f}" if pd.notnull(x) and isinstance(x, (int, float)) else x
             )
+    formatted_data["Pickup Occ"] = pd.to_numeric(formatted_data["Pickup Occ"], errors="coerce")
+    formatted_data["Pickup Revenue"] = pd.to_numeric(formatted_data["Pickup Revenue"], errors="coerce")
 
     return dash_table.DataTable(
-        #columns=[{"name": col, "id": col} for col in formatted_data.columns],
         columns=[
             {"name": "Day", "id": "Day"},
             {"name": "Month", "id": "Month"},
             {"name": "Actual RN's", "id": "Actual Occ"},
             {"name": "Budget RN's", "id": "Budget Occ"},
+            {"name": "Pickup RN's", "id": "Pickup Occ"},
             {"name": "Actual ADR", "id": "Actual Rate"},
             {"name": "Budget ADR", "id": "Budget Rate"},
             {"name": "Actual Revenue", "id": "Actual Revenue"},
             {"name": "Budget Revenue", "id": "Budget Revenue"},
+            {"name": "Pickup Revenue", "id": "Pickup Revenue"},
             {"name": "Label", "id": "Label"},
         ],
         data=formatted_data.to_dict('records'),
-	fixed_rows={'headers': True},
-        style_table={'overflowY': 'auto','overflowX': 'auto'},
+        fixed_rows={'headers': True},
+        style_table={'overflowX': 'auto','height': '1200px',"width": "100%","minWidth": "100%",},
         style_cell={'textAlign': 'center'},
         style_header={'fontWeight': 'bold','whiteSpace': 'normal'},
         style_data_conditional=[
-            # Normal rows
             {'if': {'filter_query': '{Label} = "History"'}, 'backgroundColor': '#BAF9B7'},
             {'if': {'filter_query': '{Label} = "Forecast"'}, 'backgroundColor': '#F79E92'},
-            
-            # Subtotals
             {
-                'if': {
-                    'filter_query': '{Day} contains "Subtotal" && {Label} = "History"'
-                },
-                'backgroundColor': '#85FA92',
-                'fontWeight': 'bold'
+                'if': {'filter_query': '{Day} contains "Subtotal" && {Label} = "History"'},
+                'backgroundColor': '#85FA92','fontWeight': 'bold'
             },
             {
-                'if': {
-                    'filter_query': '{Day} contains "Subtotal" && {Label} = "Forecast"'
-                },
-                'backgroundColor': '#FA8576',
-                'fontWeight': 'bold'
+                'if': {'filter_query': '{Day} contains "Subtotal" && {Label} = "Forecast"'},
+                'backgroundColor': '#FA8576','fontWeight': 'bold'
             },
-            
-            # Final total row
             {
-                'if': {
-                    'filter_query': '{Day} = "Total"'
-                },
-                'backgroundColor': '#92C1F7',
-                'fontWeight': 'bold'
+                'if': {'filter_query': '{Day} = "Total"'},
+                'backgroundColor': '#92C1F7','fontWeight': 'bold'
             }
         ]
     )
+
 # ========== App Layout ==========
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = dbc.Container([
@@ -332,16 +348,17 @@ def populate_month_dropdown(_):
     Input('interval-component', 'n_intervals')
 )
 def update_tabs(selected_month,n):
+
     try:
         actual_data = ws_actual.get_all_values()
         budget_data = ws_budget.get_all_values()
-
+        
         if not actual_data or not budget_data:
             return html.Div("❌ Failed to fetch data from Google Sheets.")
 
         actual_df = pd.DataFrame(actual_data[1:], columns=actual_data[0])
         budget_df = pd.DataFrame(budget_data[1:], columns=budget_data[0])
-
+        
         # Filter selected month in data
         actual_df = actual_df[actual_df['Month-Year']==selected_month]
         
@@ -353,13 +370,14 @@ def update_tabs(selected_month,n):
         print(f"Budget shape: {budget_df.shape}")
         print(f"Actual data sample:\n{actual_df.head()}")
         print(f"Budget data sample:\n{budget_df.head()}")
-        
+
+
         # Clean and standardize actual data
         if 'Month-Year' in actual_df.columns:
             actual_df = actual_df.drop('Month-Year', axis=1)
         
         # Ensure all required columns exist
-        required_cols = ['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label']
+        required_cols = ['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label','Pickup Occ', 'Pickup Revenue']
         for col in required_cols:
             if col not in actual_df.columns:
                 actual_df[col] = None
@@ -387,7 +405,7 @@ def update_tabs(selected_month,n):
         print(f"Budget null dates: {budget_df['Date'].isnull().sum()}")
         
         # Convert numeric columns
-        for col in ['Total Occ', 'Avg Rate', 'Revenue']:
+        for col in ['Total Occ', 'Avg Rate', 'Revenue','Pickup Occ','Pickup Revenue']:
             actual_df[col] = actual_df[col].astype(str).str.replace(',', '', regex=False)
             budget_df[col] = budget_df[col].astype(str).str.replace(',', '', regex=False)
             
@@ -436,15 +454,19 @@ def update_tabs(selected_month,n):
             'Avg Rate_Budget': 'Budget Rate',
             'Revenue_Actual': 'Actual Revenue',
             'Revenue_Budget': 'Budget Revenue',
-            'Label_Actual': 'Label'
+            'Label_Actual': 'Label',
+            'Pickup Occ_Actual': 'Pickup Occ',
+            'Pickup Revenue_Actual': 'Pickup Revenue'
         }, inplace=True)
         
         # Fill missing Label with Budget Label if needed
         merged_df['Label'] = merged_df['Label'].fillna(merged_df.get('Label_Budget', ''))
         
         # Select final columns
-        final_columns = ['Property', 'Date', 'Day', 'Month', 'Actual Occ', 'Budget Occ', 
-                        'Actual Rate', 'Budget Rate', 'Actual Revenue', 'Budget Revenue', 'Label']
+        final_columns = ['Property', 'Date', 'Day', 'Month',
+                         'Actual Occ', 'Budget Occ', 'Pickup Occ',
+                         'Actual Rate', 'Budget Rate',
+                         'Actual Revenue', 'Budget Revenue', 'Pickup Revenue', 'Label']
         
         # Ensure all columns exist
         for col in final_columns:
@@ -464,19 +486,21 @@ def update_tabs(selected_month,n):
         
         if pivot_df.empty:
             return html.Div("❌ No rows with actual occupancy data found.")
-        
+            
+
         # Generate tabs
         tabs = []
         for prop, group in pivot_df.groupby("Property"):
             if not group.empty:
-                print(f"Creating tab for property: {prop} with {len(group)} rows")
                 tabs.append(
                     dcc.Tab(label=prop, children=[
                         make_table(group[['Day', 'Month', 'Actual Occ', 'Budget Occ', 
-                                        'Actual Rate', 'Budget Rate', 'Actual Revenue', 'Budget Revenue', 'Label']])
+                                        'Pickup Occ', 'Actual Rate', 'Budget Rate',
+                                        'Actual Revenue', 'Budget Revenue', 
+                                        'Pickup Revenue', 'Label']])
                     ])
                 )
-        
+
         print(f"Created {len(tabs)} tabs")
         return dcc.Tabs(tabs)
     
