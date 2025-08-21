@@ -334,7 +334,7 @@ def populate_month_dropdown(_):
         key=lambda x: pd.to_datetime(x, format='%b-%Y')
     )
     
-    current_month = datetime.now().strftime('%B')
+    current_month = datetime.now().strftime('%b-%Y')
     default = current_month if current_month in months_sorted else months_sorted[0]
 
     options = [{'label': m, 'value': m} for m in months_sorted]
