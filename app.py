@@ -110,7 +110,15 @@ def update_google_sheet(processed_df, worksheet):
     if not existing_df.empty:
         existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
         existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
-    
+        
+    # Ensure numerics
+    processed_df['Total Occ'] = pd.to_numeric(processed_df['Total Occ'].astype(str).str.replace(",", ""), errors='coerce')
+    processed_df['Revenue']   = pd.to_numeric(processed_df['Revenue'].astype(str).str.replace(",", ""), errors='coerce')
+
+    if not existing_df.empty:
+        existing_df['Total Occ'] = pd.to_numeric(existing_df['Total Occ'].astype(str).str.replace(",", ""), errors='coerce')
+        existing_df['Revenue']   = pd.to_numeric(existing_df['Revenue'].astype(str).str.replace(",", ""), errors='coerce')
+
     # --- Calculate Pickup (diff from last value in sheet) ---
     compare_df = processed_df.merge(
         existing_df[['Property', 'Date', 'Total Occ', 'Revenue']],
@@ -129,7 +137,6 @@ def update_google_sheet(processed_df, worksheet):
         pd.to_numeric(compare_df['Revenue_prev'], errors='coerce')
     ).fillna(0)
 
-    
     compare_df = compare_df.drop(columns=['Total Occ_prev', 'Revenue_prev'])
     processed_df = compare_df[EXPECTED_COLUMNS]
 
@@ -211,13 +218,13 @@ def make_table(data):
 
     # Format revenue, pickup and rate columns
     formatted_data = data.copy()
+    formatted_data["Pickup Occ"] = pd.to_numeric(formatted_data["Pickup Occ"], errors="coerce")
+    formatted_data["Pickup Revenue"] = pd.to_numeric(formatted_data["Pickup Revenue"], errors="coerce")
     for col in ['Actual Revenue', 'Budget Revenue', 'Pickup Revenue', 'Actual Rate', 'Budget Rate']:
         if col in formatted_data.columns:
             formatted_data[col] = formatted_data[col].apply(
                 lambda x: f"{float(x):,.0f}" if pd.notnull(x) and isinstance(x, (int, float)) else x
             )
-    formatted_data["Pickup Occ"] = pd.to_numeric(formatted_data["Pickup Occ"], errors="coerce")
-    formatted_data["Pickup Revenue"] = pd.to_numeric(formatted_data["Pickup Revenue"], errors="coerce")
 
     return dash_table.DataTable(
         columns=[
