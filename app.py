@@ -165,22 +165,23 @@ def make_table(data):
 
     def safe_mean(series):
         return round(series.mean(skipna=True), 2) if series.notna().any() else 0
-    def calculate_adr(revenue_series, rooms_series):
-    """
-    revenue_series: column containing revenue values
-    rooms_series: column containing total room nights (Total Occ)
-    """
-    # Clean numeric values (remove commas)
-    rev = pd.to_numeric(revenue_series.astype(str).str.replace(",", ""), errors="coerce")
-    rooms = pd.to_numeric(rooms_series, errors="coerce")
     
-    total_revenue = rev.sum(skipna=True)
-    total_rooms = rooms.sum(skipna=True)
-
-    if total_rooms == 0:
-        return 0
-
-    return round(total_revenue / total_rooms, 2)
+    def calculate_adr(revenue_series, rooms_series):
+        """
+        revenue_series: column containing revenue values
+        rooms_series: column containing total room nights (Total Occ)
+        """
+        # Clean numeric values (remove commas)
+        rev = pd.to_numeric(revenue_series.astype(str).str.replace(",", ""), errors="coerce")
+        rooms = pd.to_numeric(rooms_series, errors="coerce")
+        
+        total_revenue = rev.sum(skipna=True)
+        total_rooms = rooms.sum(skipna=True)
+    
+        if total_rooms == 0:
+            return 0
+    
+        return round(total_revenue / total_rooms, 2)
 
 
     # Subtotal: History
