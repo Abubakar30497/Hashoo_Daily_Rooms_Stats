@@ -165,6 +165,23 @@ def make_table(data):
 
     def safe_mean(series):
         return round(series.mean(skipna=True), 2) if series.notna().any() else 0
+    def calculate_adr(revenue_series, rooms_series):
+    """
+    revenue_series: column containing revenue values
+    rooms_series: column containing total room nights (Total Occ)
+    """
+    # Clean numeric values (remove commas)
+    rev = pd.to_numeric(revenue_series.astype(str).str.replace(",", ""), errors="coerce")
+    rooms = pd.to_numeric(rooms_series, errors="coerce")
+    
+    total_revenue = rev.sum(skipna=True)
+    total_rooms = rooms.sum(skipna=True)
+
+    if total_rooms == 0:
+        return 0
+
+    return round(total_revenue / total_rooms, 2)
+
 
     # Subtotal: History
     history_data = data[data['Label'] == 'History']
@@ -176,7 +193,7 @@ def make_table(data):
         'Pickup Occ': safe_sum(history_data['Pickup Occ']),
         #'Actual Rate': safe_mean(history_data['Actual Rate']),
         #'Budget Rate': safe_mean(history_data['Budget Rate']),
-        'Actual Rate': round(safe_sum(history_data['Actual Revenue'])/safe_sum(history_data['Actual Occ']) if safe_sum(history_data['Actual Revenue'])/safe_sum(history_data['Actual Occ']) else 0),
+        'Actual Rate': calculate_adr(history_data['Actual Revenue'],history_data['Actual Occ']),
         'Budget Rate': safe_mean(history_data['Budget Rate']),
         'Actual Revenue': safe_sum(history_data['Actual Revenue']),
         'Budget Revenue': safe_sum(history_data['Budget Revenue']),
@@ -193,7 +210,7 @@ def make_table(data):
         'Budget Occ': safe_sum(forecast_data['Budget Occ']),
         'Pickup Occ': safe_sum(forecast_data['Pickup Occ']),
         #'Actual Rate': safe_mean(forecast_data['Actual Rate']),
-        'Actual Rate': round(safe_sum(forecast_data['Actual Revenue'])/safe_sum(forecast_data['Actual Occ']) if safe_sum(forecast_data['Actual Revenue'])/safe_sum(forecast_data['Actual Occ']) else 0),
+        'Actual Rate': calculate_adr(forecast_data['Actual Revenue'],forecast_data['Actual Occ']),
         'Budget Rate': safe_mean(forecast_data['Budget Rate']),
         'Actual Revenue': safe_sum(forecast_data['Actual Revenue']),
         'Budget Revenue': safe_sum(forecast_data['Budget Revenue']),
@@ -209,7 +226,7 @@ def make_table(data):
         'Budget Occ': safe_sum(data['Budget Occ']),
         'Pickup Occ': safe_sum(data['Pickup Occ']),
         #'Actual Rate': safe_mean(data['Actual Rate']),
-        'Actual Rate': round(safe_sum(data['Actual Revenue'])/safe_sum(data['Actual Occ']) if safe_sum(data['Actual Revenue'])/safe_sum(data['Actual Occ']) else 0),
+        'Actual Rate': calculate_adr(data['Actual Revenue'],data['Actual Occ']),
         'Budget Rate': safe_mean(data['Budget Rate']),
         'Actual Revenue': safe_sum(data['Actual Revenue']),
         'Budget Revenue': safe_sum(data['Budget Revenue']),
