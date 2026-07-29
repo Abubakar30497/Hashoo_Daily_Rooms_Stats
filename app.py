@@ -83,10 +83,6 @@ budget_data_global = pd.DataFrame()
 #    return df[['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']]
 # ========== File Processor ==========
 def process_file(contents, filename):
-    import base64
-    import io
-    import re
-    import pandas as pd
 
     # ----------------------------------------------------------
     # Decode file
@@ -233,18 +229,41 @@ def process_file(contents, filename):
     # ----------------------------------------------------------
     # Extract Dates
     # ----------------------------------------------------------
-    df["Date"] = (
-        df["Date"]
-        .astype(str)
-        .str.extract(r"(\d{2}-[A-Za-z]{3}-\d{4})")[0]
-    )
-
-    df["Date"] = pd.to_datetime(
-        df["Date"],
-        format="%d-%b-%Y",
-        errors="coerce"
-    )
-
+    if sheet_name == "Page 1":
+    
+        # Example:
+        # Wed 01/07/2026
+        # Thu 02/07/2026
+    
+        df["Date"] = (
+            df["Date"]
+            .astype(str)
+            .str.extract(r"(\d{2}/\d{2}/\d{4})")[0]
+        )
+    
+        df["Date"] = pd.to_datetime(
+            df["Date"],
+            format="%d/%m/%Y",
+            errors="coerce"
+        )
+    
+    else:
+    
+        # Example:
+        # 01-Jul-2026
+    
+        df["Date"] = (
+            df["Date"]
+            .astype(str)
+            .str.extract(r"(\d{2}-[A-Za-z]{3}-\d{4})")[0]
+        )
+    
+        df["Date"] = pd.to_datetime(
+            df["Date"],
+            format="%d-%b-%Y",
+            errors="coerce"
+        )
+    
     df = df[df["Date"].notna()].copy()
 
     # ----------------------------------------------------------
