@@ -85,134 +85,158 @@ budget_data_global = pd.DataFrame()
 def process_file(contents, filename):
     import base64
     import io
+    import re
     import pandas as pd
 
+    # ----------------------------------------------------------
+    # Decode file
+    # ----------------------------------------------------------
     content_type, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
 
-    # Read sheet
+    excel = pd.ExcelFile(io.BytesIO(decoded))
+
+    # ----------------------------------------------------------
+    # Detect Sheet
+    # ----------------------------------------------------------
+    if "Sheet2" in excel.sheet_names:
+        sheet_name = "Sheet2"
+        skip_rows = 2
+
+    elif "Page 1" in excel.sheet_names:
+        sheet_name = "Page 1"
+        skip_rows = 4
+
+    else:
+        raise Exception(
+            f"Could not locate Sheet2 or Page 1.\nAvailable sheets:\n{excel.sheet_names}"
+        )
+
+    # ----------------------------------------------------------
+    # Read Sheet
+    # ----------------------------------------------------------
     df = pd.read_excel(
         io.BytesIO(decoded),
-        sheet_name="Sheet2",
-        skiprows=2
+        sheet_name=sheet_name,
+        skiprows=skip_rows
     )
 
-    # Remove completely blank columns
-    df = df.loc[:, ~df.columns.isna()]
+    # ----------------------------------------------------------
+    # Clean column names
+    # ----------------------------------------------------------
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.replace("\n", " ", regex=False)
+        .str.replace(r"\s+", " ", regex=True)
+    )
 
-    # ---------------------------------------------------------
-    # Detect Report Format
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
+    # Find columns automatically
+    # ----------------------------------------------------------
+    rooms_col = None
+    revenue_col = None
+    adr_col = None
 
-    # FORMAT 1 (Old Format)
-    # Total Occ  -> Total Occ
-    # Revenue    -> Revenue / Room Rev
-    # ADR        -> Avg Rate / Avg.Rate
-    if "Total Occ" in df.columns:
+    for col in df.columns:
 
-        occ_col = "Total Occ"
+        c = col.lower().strip()
 
-        if "Revenue" in df.columns:
-            rev_col = "Revenue"
-        elif "Room Rev" in df.columns:
-            rev_col = "Room Rev"
-        else:
-            raise Exception("Revenue column not found.")
+        # Rooms
+        if (
+            c == "rooms"
+            or "total occ" in c
+        ):
+            rooms_col = col
 
-        if "Avg Rate" in df.columns:
-            adr_col = "Avg Rate"
-        elif "Avg.Rate" in df.columns:
-            adr_col = "Avg.Rate"
-        else:
-            raise Exception("ADR column not found.")
+        # Revenue
+        elif (
+            "total room rev" in c
+            or c == "revenue"
+            or "room rev" in c
+        ):
+            revenue_col = col
 
-        print("Detected Format 1")
+        # ADR
+        elif (
+            c == "adr"
+            or "avg.rate" in c
+            or "avg rate" in c
+        ):
+            adr_col = col
 
+    # ----------------------------------------------------------
+    # Validation
+    # ----------------------------------------------------------
+    if rooms_col is None:
+        raise Exception(
+            f"Rooms column not found.\nColumns:\n{list(df.columns)}"
+        )
 
-    # FORMAT 2 (PCHB Copy)
-    # B = Total Occ
-    # S = Revenue
-    # W = ADR
-    elif "Room Rev" in df.columns and "Avg.Rate" in df.columns:
+    if revenue_col is None:
+        raise Exception(
+            f"Revenue column not found.\nColumns:\n{list(df.columns)}"
+        )
 
-        occ_col = df.columns[1]      # Column B
-        rev_col = "Room Rev"         # Column S
-        adr_col = "Avg.Rate"         # Column W
+    if adr_col is None:
+        raise Exception(
+            f"ADR column not found.\nColumns:\n{list(df.columns)}"
+        )
 
-        print("Detected Format 2")
-
-
-    # FORMAT 3 (PCR)
-    # D = Total Occ
-    # I = Revenue
-    # H = ADR
-    else:
-
-        occ_col = df.columns[3]      # D
-
-        if "Revenue" in df.columns:
-            rev_col = "Revenue"
-        elif "Room Rev" in df.columns:
-            rev_col = "Room Rev"
-        else:
-            rev_col = df.columns[8]  # I
-
-        if "Avg Rate" in df.columns:
-            adr_col = "Avg Rate"
-        elif "Avg.Rate" in df.columns:
-            adr_col = "Avg.Rate"
-        else:
-            adr_col = df.columns[7]  # H
-
-        print("Detected Format 3")
-
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
     # Rename to standard names
-    # ---------------------------------------------------------
-    df = df.rename(columns={
-        occ_col: "Total Occ",
-        rev_col: "Revenue",
+    # ----------------------------------------------------------
+    df.rename(columns={
+        rooms_col: "Total Occ",
+        revenue_col: "Revenue",
         adr_col: "Avg Rate"
-    })
+    }, inplace=True)
 
-    # ---------------------------------------------------------
-    # Required Columns
-    # ---------------------------------------------------------
-    required = ["Date", "Total Occ"]
+    # ----------------------------------------------------------
+    # Date column
+    # ----------------------------------------------------------
+    date_col = None
 
-    for col in required:
-        if col not in df.columns:
-            raise Exception(f"Missing required column: {col}")
+    for col in df.columns:
+        if col.lower().strip() == "date":
+            date_col = col
+            break
 
-    if "Revenue" not in df.columns:
-        df["Revenue"] = None
+    if date_col is None:
+        raise Exception("Date column not found.")
 
-    if "Avg Rate" not in df.columns:
-        df["Avg Rate"] = None
+    if date_col != "Date":
+        df.rename(columns={date_col: "Date"}, inplace=True)
 
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
     # History / Forecast
-    # ---------------------------------------------------------
-    forecast_idx = df[
-        df["Date"].astype(str).str.contains("Forecast", case=False, na=False)
+    # ----------------------------------------------------------
+    forecast_rows = df[
+        df["Date"]
+        .astype(str)
+        .str.contains("Forecast", case=False, na=False)
     ].index
 
-    if len(forecast_idx):
-        idx = forecast_idx[0]
+    if len(forecast_rows):
+
+        first_forecast = forecast_rows[0]
+
         df["Label"] = [
-            "History" if i < idx else "Forecast"
+            "History" if i < first_forecast else "Forecast"
             for i in df.index
         ]
+
     else:
+
         df["Label"] = "History"
 
-    # ---------------------------------------------------------
-    # Clean Dates
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
+    # Extract Dates
+    # ----------------------------------------------------------
     df["Date"] = (
         df["Date"]
         .astype(str)
-        .str.extract(r"(\d{2}-[A-Z]{3}-\d{4})")[0]
+        .str.extract(r"(\d{2}-[A-Za-z]{3}-\d{4})")[0]
     )
 
     df["Date"] = pd.to_datetime(
@@ -223,17 +247,43 @@ def process_file(contents, filename):
 
     df = df[df["Date"].notna()].copy()
 
-    # ---------------------------------------------------------
-    # Hotel Name
-    # ---------------------------------------------------------
-    hotel = filename.split()[1].split(".")[0]
+    # ----------------------------------------------------------
+    # Clean Numeric Columns
+    # ----------------------------------------------------------
+    for col in ["Total Occ", "Revenue", "Avg Rate"]:
+
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .str.replace(r"[^\d.-]", "", regex=True)
+        )
+
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # ----------------------------------------------------------
+    # Property Name
+    # ----------------------------------------------------------
+    property_code = re.search(
+        r"(PCHB|PCHM|PCHK|PCHL|PCHR|PCLNH|PCLSK|RUMANZA|PCR)",
+        filename.upper()
+    )
+
+    if property_code:
+        hotel = property_code.group(1)
+    else:
+        hotel = filename.split()[1].replace(".xlsx", "")
+
     df["Property"] = hotel
 
+    # ----------------------------------------------------------
+    # Month-Year
+    # ----------------------------------------------------------
     df["Month-Year"] = df["Date"].dt.strftime("%b-%Y")
 
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
     # Return
-    # ---------------------------------------------------------
+    # ----------------------------------------------------------
     return df[
         [
             "Property",
