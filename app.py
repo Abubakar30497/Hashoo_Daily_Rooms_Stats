@@ -377,7 +377,7 @@ def update_google_sheet(processed_df, worksheet):
     # --- Append + Sort ---
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
-
+    print(updated_df.isna().sum())
     # Write back to Google Sheet
     worksheet.clear()
     worksheet.update([updated_df.columns.tolist()] + updated_df.astype(str).values.tolist())
