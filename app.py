@@ -188,13 +188,6 @@ def process_file(contents, filename):
         adr_col: "Avg Rate"
     }, inplace=True)
 
-    print("="*80)
-    print(filename)
-    print("Detected columns:")
-    print("Rooms   :", rooms_col)
-    print("Revenue :", revenue_col)
-    print("ADR      :", adr_col)
-    print(df[["Date","Total Occ","Revenue","Avg Rate"]].head(20))
     # ----------------------------------------------------------
     # Date column
     # ----------------------------------------------------------
@@ -356,6 +349,9 @@ def update_google_sheet(processed_df, worksheet):
         existing_df['Total Occ'] = pd.to_numeric(existing_df['Total Occ'].astype(str).str.replace(",", ""), errors='coerce')
         existing_df['Revenue']   = pd.to_numeric(existing_df['Revenue'].astype(str).str.replace(",", ""), errors='coerce')
 
+    print(existing_df[['Property','Date','Revenue']].head(20))
+    print(existing_df['Revenue'].isna().sum())
+
     # --- Calculate Pickup (diff from last value in sheet) ---
     compare_df = processed_df.merge(
         existing_df[['Property', 'Date', 'Total Occ', 'Revenue']],
@@ -384,7 +380,7 @@ def update_google_sheet(processed_df, worksheet):
     # --- Append + Sort ---
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
-    print(updated_df.isna().sum())
+
     # Write back to Google Sheet
     worksheet.clear()
     worksheet.update([updated_df.columns.tolist()] + updated_df.astype(str).values.tolist())
