@@ -283,16 +283,8 @@ def process_file(contents, filename):
     # ----------------------------------------------------------
     # Property Name
     # ----------------------------------------------------------
-    property_code = re.search(
-        r"(PCHB|PCHM|PCHK|PCHL|PCHR|PCLNH|PCLSK|RUMANZA|PCR)",
-        filename.upper()
-    )
 
-    if property_code:
-        hotel = property_code.group(1)
-    else:
-        hotel = filename.split()[1].replace(".xlsx", "")
-
+    hotel = filename.split()[1].split(".")[0]
     df["Property"] = hotel
 
     # ----------------------------------------------------------
