@@ -291,7 +291,13 @@ def process_file(contents, filename):
     # Month-Year
     # ----------------------------------------------------------
     df["Month-Year"] = df["Date"].dt.strftime("%b-%Y")
-
+    
+    print("="*80)
+    print(filename)
+    print(df.head())
+    print(df.dtypes)
+    print("Rows:", len(df))
+    print("="*80)
     # ----------------------------------------------------------
     # Return
     # ----------------------------------------------------------
