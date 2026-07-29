@@ -36,52 +36,215 @@ budget_data_global = pd.DataFrame()
 
 
 # ========== File Processor ==========
+#def process_file(contents, filename):
+#    content_type, content_string = contents.split(',')
+#    decoded = base64.b64decode(content_string)
+#    df = pd.read_excel(io.BytesIO(decoded), sheet_name="Sheet2", skiprows=2)
+#
+#    # Handle inconsistent column names
+#    col_map = {
+#        'Total Occ.': 'Total Occ',
+#        'Avg Rate': 'Avg Rate',
+#        'Avg.Rate': 'Avg Rate',
+#        'Revenue': 'Revenue',
+#        'Room Rev': 'Revenue'
+#    }
+#    df.rename(columns={col: col_map[col] for col in df.columns if col in col_map}, inplace=True)
+#
+#    required_cols = ['Date', 'Total Occ']
+#    for col in ['Avg Rate', 'Revenue']:
+#        if col not in df.columns:
+#            df[col] = None  # Fill with NaNs if missing
+#    
+#    # Determine history/forecast
+#    forecast_start_index = df[df['Date'].astype(str).str.contains("Forecast", case=False)].index
+#    forecast_start_index = forecast_start_index[0] if len(forecast_start_index) > 0 else None
+#
+#    #df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index] \
+#    #    if forecast_start_index is not None else 'History'
+#    if forecast_start_index is not None:
+#        df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index]
+#    else:
+#        df['Label'] = ['History'] * len(df)
+#    
+#    #df = df[df['Date'].astype(str).str.contains("JUL-2025")]
+#    df.reset_index(drop=True, inplace=True)
+#
+#    hotel_name = filename.split()[1].split('.')[0]
+#    df['Property'] = hotel_name
+#    # Only if you *must* extract from strings (e.g., due to mixed content)
+#    df['Date'] = df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0]
+#    df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y', errors='coerce')
+#    df = df[df['Date'].notna()]
+#
+#    #df['Date'] = pd.to_datetime(df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0], format='%d-%b-%Y')
+#    df['Month-Year'] = df['Date'].dt.strftime('%b-%Y')
+#
+#    return df[['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']]
+# ========== File Processor ==========
 def process_file(contents, filename):
+    import base64
+    import io
+    import pandas as pd
+
     content_type, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
-    df = pd.read_excel(io.BytesIO(decoded), sheet_name="Sheet2", skiprows=2)
 
-    # Handle inconsistent column names
-    col_map = {
-        'Total Occ.': 'Total Occ',
-        'Avg Rate': 'Avg Rate',
-        'Avg.Rate': 'Avg Rate',
-        'Revenue': 'Revenue',
-        'Room Rev': 'Revenue'
-    }
-    df.rename(columns={col: col_map[col] for col in df.columns if col in col_map}, inplace=True)
+    # Read sheet
+    df = pd.read_excel(
+        io.BytesIO(decoded),
+        sheet_name="Sheet2",
+        skiprows=2
+    )
 
-    required_cols = ['Date', 'Total Occ']
-    for col in ['Avg Rate', 'Revenue']:
-        if col not in df.columns:
-            df[col] = None  # Fill with NaNs if missing
-    
-    # Determine history/forecast
-    forecast_start_index = df[df['Date'].astype(str).str.contains("Forecast", case=False)].index
-    forecast_start_index = forecast_start_index[0] if len(forecast_start_index) > 0 else None
+    # Remove completely blank columns
+    df = df.loc[:, ~df.columns.isna()]
 
-    #df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index] \
-    #    if forecast_start_index is not None else 'History'
-    if forecast_start_index is not None:
-        df['Label'] = ['History' if i < forecast_start_index else 'Forecast' for i in df.index]
+    # ---------------------------------------------------------
+    # Detect Report Format
+    # ---------------------------------------------------------
+
+    # FORMAT 1 (Old Format)
+    # Total Occ  -> Total Occ
+    # Revenue    -> Revenue / Room Rev
+    # ADR        -> Avg Rate / Avg.Rate
+    if "Total Occ" in df.columns:
+
+        occ_col = "Total Occ"
+
+        if "Revenue" in df.columns:
+            rev_col = "Revenue"
+        elif "Room Rev" in df.columns:
+            rev_col = "Room Rev"
+        else:
+            raise Exception("Revenue column not found.")
+
+        if "Avg Rate" in df.columns:
+            adr_col = "Avg Rate"
+        elif "Avg.Rate" in df.columns:
+            adr_col = "Avg.Rate"
+        else:
+            raise Exception("ADR column not found.")
+
+        print("Detected Format 1")
+
+
+    # FORMAT 2 (PCHB Copy)
+    # B = Total Occ
+    # S = Revenue
+    # W = ADR
+    elif "Room Rev" in df.columns and "Avg.Rate" in df.columns:
+
+        occ_col = df.columns[1]      # Column B
+        rev_col = "Room Rev"         # Column S
+        adr_col = "Avg.Rate"         # Column W
+
+        print("Detected Format 2")
+
+
+    # FORMAT 3 (PCR)
+    # D = Total Occ
+    # I = Revenue
+    # H = ADR
     else:
-        df['Label'] = ['History'] * len(df)
-    
-    #df = df[df['Date'].astype(str).str.contains("JUL-2025")]
-    df.reset_index(drop=True, inplace=True)
 
-    hotel_name = filename.split()[1].split('.')[0]
-    df['Property'] = hotel_name
-    # Only if you *must* extract from strings (e.g., due to mixed content)
-    df['Date'] = df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0]
-    df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y', errors='coerce')
-    df = df[df['Date'].notna()]
+        occ_col = df.columns[3]      # D
 
-    #df['Date'] = pd.to_datetime(df['Date'].astype(str).str.extract(r'(\d{2}-[A-Z]{3}-\d{4})')[0], format='%d-%b-%Y')
-    df['Month-Year'] = df['Date'].dt.strftime('%b-%Y')
+        if "Revenue" in df.columns:
+            rev_col = "Revenue"
+        elif "Room Rev" in df.columns:
+            rev_col = "Room Rev"
+        else:
+            rev_col = df.columns[8]  # I
 
-    return df[['Property', 'Date', 'Total Occ', 'Avg Rate', 'Revenue', 'Label', 'Month-Year']]
+        if "Avg Rate" in df.columns:
+            adr_col = "Avg Rate"
+        elif "Avg.Rate" in df.columns:
+            adr_col = "Avg.Rate"
+        else:
+            adr_col = df.columns[7]  # H
 
+        print("Detected Format 3")
+
+    # ---------------------------------------------------------
+    # Rename to standard names
+    # ---------------------------------------------------------
+    df = df.rename(columns={
+        occ_col: "Total Occ",
+        rev_col: "Revenue",
+        adr_col: "Avg Rate"
+    })
+
+    # ---------------------------------------------------------
+    # Required Columns
+    # ---------------------------------------------------------
+    required = ["Date", "Total Occ"]
+
+    for col in required:
+        if col not in df.columns:
+            raise Exception(f"Missing required column: {col}")
+
+    if "Revenue" not in df.columns:
+        df["Revenue"] = None
+
+    if "Avg Rate" not in df.columns:
+        df["Avg Rate"] = None
+
+    # ---------------------------------------------------------
+    # History / Forecast
+    # ---------------------------------------------------------
+    forecast_idx = df[
+        df["Date"].astype(str).str.contains("Forecast", case=False, na=False)
+    ].index
+
+    if len(forecast_idx):
+        idx = forecast_idx[0]
+        df["Label"] = [
+            "History" if i < idx else "Forecast"
+            for i in df.index
+        ]
+    else:
+        df["Label"] = "History"
+
+    # ---------------------------------------------------------
+    # Clean Dates
+    # ---------------------------------------------------------
+    df["Date"] = (
+        df["Date"]
+        .astype(str)
+        .str.extract(r"(\d{2}-[A-Z]{3}-\d{4})")[0]
+    )
+
+    df["Date"] = pd.to_datetime(
+        df["Date"],
+        format="%d-%b-%Y",
+        errors="coerce"
+    )
+
+    df = df[df["Date"].notna()].copy()
+
+    # ---------------------------------------------------------
+    # Hotel Name
+    # ---------------------------------------------------------
+    hotel = filename.split()[1].split(".")[0]
+    df["Property"] = hotel
+
+    df["Month-Year"] = df["Date"].dt.strftime("%b-%Y")
+
+    # ---------------------------------------------------------
+    # Return
+    # ---------------------------------------------------------
+    return df[
+        [
+            "Property",
+            "Date",
+            "Total Occ",
+            "Avg Rate",
+            "Revenue",
+            "Label",
+            "Month-Year"
+        ]
+    ]
 
 # ========== Update Google Sheet ==========
 def update_google_sheet(processed_df, worksheet):
