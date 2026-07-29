@@ -381,6 +381,23 @@ def update_google_sheet(processed_df, worksheet):
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
 
+    print("="*80)
+    print(updated_df.isna().sum())
+
+    for col in updated_df.columns:
+        if updated_df[col].isna().any():
+            print(f"\nColumn with NaN: {col}")
+            print(updated_df.loc[updated_df[col].isna(), ["Property", "Date", col]].head(20))
+
+    import numpy as np
+
+    print("NaN values")
+    print(updated_df.isna().sum())
+
+    print("\nInfinity values")
+    for col in updated_df.columns:
+        if pd.api.types.is_numeric_dtype(updated_df[col]):
+            print(col, np.isinf(updated_df[col]).sum())
     # Write back to Google Sheet
     worksheet.clear()
     worksheet.update([updated_df.columns.tolist()] + updated_df.astype(str).values.tolist())
