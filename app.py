@@ -341,6 +341,28 @@ def update_google_sheet(processed_df, worksheet):
         existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
         existing_df['Month-Year'] = existing_df['Month-Year'].astype(str)
         
+    print("\n" + "="*100)
+    print("STEP 1 - EXISTING SHEET DIAGNOSTICS")
+    print("="*100)
+
+    print("Rows:", len(existing_df))
+    print("Columns:", list(existing_df.columns))
+    print("\nData Types:")
+    print(existing_df.dtypes)
+
+    print("\nNaN Count:")
+    print(existing_df.isna().sum())
+
+    print("\nDuplicate Property+Date:",
+        existing_df.duplicated(["Property","Date"]).sum())
+
+    if existing_df.isna().any().any():
+        print("\nRows containing NaNs:")
+        print(
+            existing_df[
+                existing_df.isna().any(axis=1)
+            ][["Property","Date","Total Occ","Revenue"]].head(20)
+        )
     # Ensure numerics
     processed_df['Total Occ'] = pd.to_numeric(processed_df['Total Occ'].astype(str).str.replace(",", ""), errors='coerce')
     processed_df['Revenue']   = pd.to_numeric(processed_df['Revenue'].astype(str).str.replace(",", ""), errors='coerce')
@@ -352,6 +374,22 @@ def update_google_sheet(processed_df, worksheet):
     print(existing_df[['Property','Date','Revenue']].head(20))
     print(existing_df['Revenue'].isna().sum())
 
+    print("\n" + "="*100)
+    print("STEP 2 - AFTER NUMERIC CONVERSION")
+    print("="*100)
+
+    print("\nProcessed:")
+    print(processed_df[["Total Occ","Revenue","Avg Rate"]].dtypes)
+
+    print("\nExisting:")
+    print(existing_df[["Total Occ","Revenue","Avg Rate"]].dtypes)
+
+    print("\nProcessed NaNs")
+    print(processed_df[["Total Occ","Revenue","Avg Rate"]].isna().sum())
+
+    print("\nExisting NaNs")
+    print(existing_df[["Total Occ","Revenue","Avg Rate"]].isna().sum())
+
     # --- Calculate Pickup (diff from last value in sheet) ---
     compare_df = processed_df.merge(
         existing_df[['Property', 'Date', 'Total Occ', 'Revenue']],
@@ -359,6 +397,29 @@ def update_google_sheet(processed_df, worksheet):
         how='left',
         suffixes=('', '_prev')
     )
+
+    print("\n" + "="*100)
+    print("STEP 3 - AFTER MERGE")
+    print("="*100)
+
+    print(compare_df.head())
+
+    print("\nShape:", compare_df.shape)
+
+    print("\nNaNs")
+    print(compare_df.isna().sum())
+
+    print("\nRows with NaNs")
+    print(compare_df[
+        compare_df.isna().any(axis=1)
+    ][[
+        "Property",
+        "Date",
+        "Total Occ",
+        "Revenue",
+        "Total Occ_prev",
+        "Revenue_prev"
+    ]].head(20))
 
     compare_df['Pickup Occ'] = (
         pd.to_numeric(compare_df['Total Occ'], errors='coerce') -
@@ -373,6 +434,18 @@ def update_google_sheet(processed_df, worksheet):
     compare_df = compare_df.drop(columns=['Total Occ_prev', 'Revenue_prev'])
     processed_df = compare_df[EXPECTED_COLUMNS]
 
+    print("\n" + "="*100)
+    print("STEP 4 - PROCESSED DF")
+    print("="*100)
+
+    print(processed_df.head())
+
+    print("\nNaNs")
+    print(processed_df.isna().sum())
+
+    print("\nDtypes")
+    print(processed_df.dtypes)
+
     # --- Remove overlapping (replace old rows for same Property+Date) ---
     for (prop, dt) in processed_df[['Property', 'Date']].drop_duplicates().values:
         existing_df = existing_df[~((existing_df["Property"] == prop) & (existing_df["Date"] == dt))]
@@ -381,23 +454,57 @@ def update_google_sheet(processed_df, worksheet):
     updated_df = pd.concat([existing_df, processed_df], ignore_index=True)
     updated_df = updated_df.sort_values(by=["Property", "Date"])
 
-    print("="*80)
+    print("\n" + "="*100)
+    print("STEP 5 - UPDATED DF")
+    print("="*100)
+
+    print("Rows:", len(updated_df))
+
+    print("\nNaNs")
     print(updated_df.isna().sum())
 
-    for col in updated_df.columns:
-        if updated_df[col].isna().any():
-            print(f"\nColumn with NaN: {col}")
-            print(updated_df.loc[updated_df[col].isna(), ["Property", "Date", col]].head(20))
+    print("\nDtypes")
+    print(updated_df.dtypes)
 
-    import numpy as np
+    print("\nDuplicate Property+Date")
+    print(updated_df.duplicated(["Property","Date"]).sum())
 
-    print("NaN values")
+    print("\nInfinity")
+    print(updated_df.select_dtypes(include="number").isin([float("inf"),-float("inf")]).sum())
+
+    print("\nRows with NaNs")
+    print(
+        updated_df[
+            updated_df.isna().any(axis=1)
+        ][[
+            "Property",
+            "Date",
+            "Total Occ",
+            "Revenue",
+            "Avg Rate",
+            "Pickup Occ",
+            "Pickup Revenue"
+        ]].head(30)
+    )
+
+    print("\n" + "="*100)
+    print("STEP 6 - FINAL CHECK BEFORE GOOGLE")
+    print("="*100)
+
+    print("Any NaN :", updated_df.isna().any().any())
+
+    print("Any Inf :",
+        updated_df.select_dtypes(include="number")
+                    .isin([float("inf"),-float("inf")])
+                    .any()
+                    .any())
+
+    print("\nColumns with NaNs")
     print(updated_df.isna().sum())
 
-    print("\nInfinity values")
-    for col in updated_df.columns:
-        if pd.api.types.is_numeric_dtype(updated_df[col]):
-            print(col, np.isinf(updated_df[col]).sum())
+    print("\nFirst 20 rows")
+    print(updated_df.head(20))
+    
     # Write back to Google Sheet
     worksheet.clear()
     worksheet.update([updated_df.columns.tolist()] + updated_df.astype(str).values.tolist())
