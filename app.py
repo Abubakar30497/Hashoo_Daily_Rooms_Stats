@@ -188,6 +188,13 @@ def process_file(contents, filename):
         adr_col: "Avg Rate"
     }, inplace=True)
 
+    print("="*80)
+    print(filename)
+    print("Detected columns:")
+    print("Rooms   :", rooms_col)
+    print("Revenue :", revenue_col)
+    print("ADR      :", adr_col)
+    print(df[["Date","Total Occ","Revenue","Avg Rate"]].head(20))
     # ----------------------------------------------------------
     # Date column
     # ----------------------------------------------------------
